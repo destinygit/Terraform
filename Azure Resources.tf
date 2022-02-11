@@ -1,8 +1,6 @@
 
 #az login to connect terraform to Azure
 #az account set --subscription "subcription id or Name" >> will set the subsription terraform will deploy to
-
-
 #Specify Azure Provider source -- version[az cli version] use atleast(~>) at or exceeding the version we currently at
 terraform {
   required_providers {

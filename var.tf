@@ -1,4 +1,4 @@
-#Resource group Variables
+#Subscription & Tenant Id's
 
 variable "subscription_id" {
   default = "22c1e88b-0de5-4944-879b-a7f604634492"
