@@ -1,6 +1,6 @@
 # POC Azure Data Factory Resource Provision
 
-![Terraform](https://www.google.com/search?q=terraform+logo&rlz=1C1FKPE_enZA982ZA982&sxsrf=APq-WBuykj-F8CKdeBaQ0Tb57-OPtCK2rA:1644594818117&source=lnms&tbm=isch&sa=X&ved=2ahUKEwjQpruPgfj1AhXUoVwKHYwbCgMQ_AUoAXoECAEQAw&biw=1366&bih=560&dpr=1#imgrc=hpibvN2PDf_MVM)
+![Terraform](https://github.com/destinygit/Terraform/blob/main/og-image.png)
 
 ## Installations Requirements
 
