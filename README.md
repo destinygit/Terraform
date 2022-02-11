@@ -54,6 +54,6 @@ Main commands:
 ### EDITOR : Vhutshilo-R :woman_technologist:
 
 > For further queries:
-_Ping Me_: [Email Address](vee@tangentsolutions.co.za) 
+>_Ping Me_: [Email Address](vee@tangentsolutions.co.za) 
 
 
