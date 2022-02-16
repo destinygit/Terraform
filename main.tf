@@ -14,8 +14,8 @@ terraform {
 # Configure the Microsoft Azure Provider
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id
-  tenant_id       = var.tenant_id
+  subscription_id = "${var.subscription_id}"
+  tenant_id       = "${var.tenant_id}"
 }
 
 # Create a resource group
@@ -32,7 +32,7 @@ resource "azurerm_resource_group" "rg" {
 #Create Storage account
 resource "azurerm_storage_account" "sa" {
   name                     = "tfmetaaccount"
-  resource_group_name      = azurerm_resource_group.rg.name
+  resource_group_name      = "${azurerm_resource_group.rg.name}"
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
@@ -45,7 +45,7 @@ resource "azurerm_storage_account" "sa" {
     Resource    = "Storage account"
   }
 }
-/*
+
 #output block will display the result of the resource
 #data argument stores the data from the attached resource
 data "storage" "ssa" {
@@ -56,7 +56,7 @@ data "storage" "ssa" {
 output "tsa" {
   value = data.storage.ssa
 }
-*/
+
 /*
 #Create az storage data lake gen2 file system
 resource "azurerm_storage_data_lake_gen2_filesystem" "adlsfs" {
@@ -132,22 +132,23 @@ resource "azurerm_key_vault" "kv" {
     ]
     certificate_permissions = [
       "Backup", "Create", "Delete",
-      "Get", "List", 
+      "Get", "List",
       "Recover",
-      "Restore", 
+      "Restore",
     ]
-   
+
 
   }
 }
 
 
-resource "azurerm_key_vault_secret" "secret" {
-  name         = "sqlPassword"
-  value        = "#code1234"
-  key_vault_id = azurerm_key_vault.kv.id
+data "azurerm_key_vault_secret" "secret" {
+  key_key_vault_name = azurerm_key_vault.kv.name
+  resource_group_name = azurerm_resource_group.rg.name
 }
-
+output "kvo" {
+  value = data.azurerm_key_vault_secret.secret
+}
 
 #create az SQL Server
 resource "azurerm_sql_server" "sqls" {
@@ -206,11 +207,11 @@ resource "azurerm_data_factory" "adf" {
 resource "azurerm_data_factory_linked_service_data_lake_storage_gen2" "lsadls" {
   name                  = "datalakegen2"
   resource_group_name   = azurerm_resource_group.rg.name
-  data_factory_name       = azurerm_data_factory.adf.name
+  data_factory_name     = azurerm_data_factory.adf.name
   service_principal_id  = data.azurerm_client_config.current.client_id
   service_principal_key = "adfsp"
-  tenant                = "11111111-1111-1111-1111-111111111111"
-  url                   = "https://datalakestoragegen2"
+  tenant                = data.azurerm_client_config.current.tenant_id
+  url                   = "https://tfmetaaccount.dfs.core.windows.net/" #@linkedService().StorageAccountURL
   parameters            = { "StorageAccountURL" : "placeholder" }
 }
 
@@ -264,12 +265,12 @@ resource "azurerm_data_factory_dataset_azure_blob" "dsbs" {
   data_factory_name   = azurerm_data_factory.adf.name
   linked_service_name = azurerm_data_factory_linked_service_data_lake_storage_gen2.lsadls.name
   parameters = {
-      "Filesystem" : "placeholder"
-      "Directory" : "placeholder"
-      "FileName" : "placeholder"
+    "Filesystem" : "placeholder"
+    "Directory" : "placeholder"
+    "FileName" : "placeholder"
 
-    }
-  
-  path     = "Raw"
-  filename = ".parquet"
+  }
+
+  path     = "@dataset().Filesystem"  #hardcode placeholder as they would appear in adf 
+  filename = "@dataset().FileName"
 }
