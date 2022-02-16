@@ -46,6 +46,7 @@ resource "azurerm_storage_account" "sa" {
   }
 }
 
+/*
 #output block will display the result of the resource
 #data argument stores the data from the attached resource
 data "storage" "ssa" {
@@ -55,47 +56,6 @@ data "storage" "ssa" {
 
 output "tsa" {
   value = data.storage.ssa
-}
-
-/*
-#Create az storage data lake gen2 file system
-resource "azurerm_storage_data_lake_gen2_filesystem" "adlsfs" {
-  name               = "fs-lakestore"
-  storage_account_id = azurerm_storage_account.sa.id
-
-  properties = {
-    hello = "code123"
-  }
-}
-*/
-/*
-#output block will display the result of the resource
-#data argument stores the data from the attached resource
-data "lakestorage" "lsa" {
-  name = azurerm_storage_account.sa.name
-  resource_group_name = azurerm_resource_group.rg.name
-}
-
-
-output "adlsfs" {
-  value = data.azurerm_storage_data_lake_gen2_filesystem.adlsfs
-}
-*/
-/*
-#create az storage data lake gen2 path
-resource "azurerm_storage_data_lake_gen2_path" "adlsp" {
-  path               = "metadata"
-  filesystem_name    = azurerm_storage_data_lake_gen2_filesystem.adlsfs.name
-  storage_account_id = azurerm_storage_account.sa.id
-  resource           = "directory"
-}
-*/
-
-/*
-#output block will display the result of the resource
-#data argument stores the data from the attached resource
-output "adlsp" {
-  value = data.azurerm_storage_data_lake_gen2_path.adlsp
 }
 */
 
@@ -141,14 +101,35 @@ resource "azurerm_key_vault" "kv" {
   }
 }
 
+#First, call azure key vault resource
+data "azurerm_key_vault" "dkv"{
+    name = azurerm_key_vault.kv.name
+    resource_group_name = azurerm_resource_group.rg.name
+}
 
-data "azurerm_key_vault_secret" "secret" {
-  key_key_vault_name = azurerm_key_vault.kv.name
-  resource_group_name = azurerm_resource_group.rg.name
+#Then, call individual secrets from the key vault [Dtatbase connection string]
+data "azurerm_key_vault_secret" "dbsecret" {
+  name = "dbconnectionstring"
+  key_vault_id = azurerm_key_vault.kv.id
 }
+
+#Sql Server password
+data "azurerm_key_vault_secret" "sqlsecret" {
+  name = "sqlPassword"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+#Sql Server connectionstring
+data "azurerm_key_vault_secret" "sqlcsecret" {
+  name = "Sqlserverconnectionstring"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+/* Working output values of the resource [key_vault]
 output "kvo" {
-  value = data.azurerm_key_vault_secret.secret
+  value = data.azurerm_key_vault.dkv
 }
+*/
 
 #create az SQL Server
 resource "azurerm_sql_server" "sqls" {
@@ -157,7 +138,7 @@ resource "azurerm_sql_server" "sqls" {
   location                     = azurerm_resource_group.rg.location
   version                      = "12.0"
   administrator_login          = "azureadmin"
-  administrator_login_password = azurerm_key_vault_secret.secret.value
+  administrator_login_password = data.azurerm_key_vault_secret.sqlsecret.value
 
   tags = {
     Environment = "Dev"
@@ -236,27 +217,37 @@ data "azurerm_sql_database" "ddb" {
 
 output "datasqldb" {
   value = azurerm_sql_database.ddb.connection_string
-}
+*/
+
 resource "azurerm_data_factory_linked_service_azure_sql_database" "lsdb" {
   name                = "Config"
   resource_group_name = azurerm_resource_group.rg.name
-  data_factory_id     = azurerm_data_factory.adf.id
-  connection_string   = azurerm_sql_database.db.c
+  data_factory_name     = azurerm_data_factory.adf.name
+  connection_string   = data.azurerm_key_vault_secret.dbsecret.value
+  parameters          = { 
+    "SQLServerURL" : "placeholder" 
+    "SQLserverDatabaseName" : "placeholder" 
+   
+  
+  }
 }
-*/
 
-/* 
+
 resource "azurerm_data_factory_linked_service_sql_server" "lssqls" {
   name                = "lssqlServer"
   resource_group_name = azurerm_resource_group.rg.name
-  data_factory_id     = azurerm_data_factory.adf.id
-  connection_string   = "Integrated Security=False;Data Source=test;Initial Catalog=test;User ID=test;Password=test"
-   key_vault_password {
-    linked_service_name = azurerm_data_factory_linked_service_key_vault.lskv.name
-    secret_name         = "secret"
+  data_factory_name     = azurerm_data_factory.adf.name
+  connection_string = data.azurerm_key_vault_secret.sqlcsecret.value
+  parameters          = { 
+    "SQLServerName" : "placeholder" 
+    "SQLDatabaseName" : "placeholder" 
+    "AzureKeyVaultURL" : "placeholder" 
+    "SQLAuthUserName" : "placeholder" 
+    "AzureKeyVaultSecretName" : "placeholder" 
+  
   }
 }
-*/
+
 
 #blob dataset
 resource "azurerm_data_factory_dataset_azure_blob" "dsbs" {
