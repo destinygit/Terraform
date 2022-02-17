@@ -1,8 +1,10 @@
+
 #az login to connect terraform to Azure
 #az account set --subscription "subcription id or Name" >> will set the subsription terraform will deploy to
 
+#---------------------------------------------------------------------------------------------
 #Specify Azure Provider source -- version[az cli version] 
-
+#---------------------------------------------------------------------------------------------
 terraform {
   required_providers {
     azurerm = {
@@ -11,14 +13,20 @@ terraform {
     }
   }
 }
+#---------------------------------------------------------------------------------------------
 # Configure the Microsoft Azure Provider
+#---------------------------------------------------------------------------------------------
 provider "azurerm" {
   features {}
   subscription_id = "${var.subscription_id}"
   tenant_id       = "${var.tenant_id}"
 }
 
-# Create a resource group
+#---------------------------------------------------------------------------------------------
+#Resources required first ###1
+#---------------------------------------------------------------------------------------------
+
+#1 Create a resource group
 resource "azurerm_resource_group" "rg" {
   name     = "Terraform"
   location = "South Africa North"
@@ -29,7 +37,7 @@ resource "azurerm_resource_group" "rg" {
     Resource    = "Resource Group"
   }
 }
-#Create Storage account
+#2 Create Storage account
 resource "azurerm_storage_account" "sa" {
   name                     = "tfmetaaccount"
   resource_group_name      = "${azurerm_resource_group.rg.name}"
@@ -46,20 +54,10 @@ resource "azurerm_storage_account" "sa" {
   }
 }
 
-/*
-#output block will display the result of the resource
-#data argument stores the data from the attached resource
-data "storage" "ssa" {
-  name = azurerm_storage_account.sa.name
-  resource_group_name = azurerm_resource_group.rg.name
-}
-
-output "tsa" {
-  value = data.storage.ssa
-}
-*/
-
+#---------------------------------------------------------------------------------------------
 #Get current tenantid and my objectid
+#---------------------------------------------------------------------------------------------
+
 data "azurerm_client_config" "current" {}
 
 #create az keavault and secrets
@@ -100,6 +98,9 @@ resource "azurerm_key_vault" "kv" {
 
   }
 }
+#---------------------------------------------------------------------------------------------
+#Get Key_Vault Secrets
+#---------------------------------------------------------------------------------------------
 
 #First, call azure key vault resource
 data "azurerm_key_vault" "dkv"{
@@ -122,6 +123,18 @@ data "azurerm_key_vault_secret" "sqlsecret" {
 #Sql Server connectionstring
 data "azurerm_key_vault_secret" "sqlcsecret" {
   name = "Sqlserverconnectionstring"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+#MySql Server connectionstring
+data "azurerm_key_vault_secret" "Msqlcsecret" {
+  name = "Mysqlconnectionstring"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+#PostgresSQL connectionstring
+data "azurerm_key_vault_secret" "Psqlcsecret" {
+  name = "postgresconnectionstring"
   key_vault_id = azurerm_key_vault.kv.id
 }
 
@@ -163,7 +176,6 @@ resource "azurerm_sql_database" "db" {
   }
 
 
-
   tags = {
     Environment = "Dev"
     location    = "South Africa North"
@@ -184,6 +196,11 @@ resource "azurerm_data_factory" "adf" {
     Resource    = "Data Factory"
   }
 }
+
+#---------------------------------------------------------------------------------------------
+#Create Linked Services ###2
+#---------------------------------------------------------------------------------------------
+
 # Create a azure data lake gen2 Linked Service
 resource "azurerm_data_factory_linked_service_data_lake_storage_gen2" "lsadls" {
   name                  = "datalakegen2"
@@ -192,8 +209,8 @@ resource "azurerm_data_factory_linked_service_data_lake_storage_gen2" "lsadls" {
   service_principal_id  = data.azurerm_client_config.current.client_id
   service_principal_key = "adfsp"
   tenant                = data.azurerm_client_config.current.tenant_id
-  url                   = "https://tfmetaaccount.dfs.core.windows.net/" #@linkedService().StorageAccountURL
-  parameters            = { "StorageAccountURL" : "placeholder" }
+  url                   = "https://tfmetaaccount.dfs.core.windows.net/" #requires a link, not placeholder[@linkedService().StorageAccountURL]
+  parameters            = { "StorageAccountURL" : "placeholder"  }
 }
 
 #create azure ketvault linked service
@@ -202,56 +219,112 @@ resource "azurerm_data_factory_linked_service_key_vault" "lskv" {
   resource_group_name = azurerm_resource_group.rg.name
   data_factory_name   = azurerm_data_factory.adf.name
   key_vault_id        = azurerm_key_vault.kv.id
-  parameters          = { "AzureKeyVaultURL" : "placeholder" }
+  parameters          = { "AzureKeyVaultURL" : "placeholder"  }
 }
 
-/*
-#create az SQL Database linked service
-#create sql DB first then use keyvault to store connection string
-data "azurerm_sql_database" "ddb" {
-  name = azurerm_sql_database.db.name
-  server_name = azurerm_sql_database.db.server_name
-  resource_group_name = azurerm_resource_group.rg.name
-  
-}
-
-output "datasqldb" {
-  value = azurerm_sql_database.ddb.connection_string
-*/
-
+#create azure SQL Database linked service
 resource "azurerm_data_factory_linked_service_azure_sql_database" "lsdb" {
   name                = "Config"
   resource_group_name = azurerm_resource_group.rg.name
   data_factory_name     = azurerm_data_factory.adf.name
   connection_string   = data.azurerm_key_vault_secret.dbsecret.value
   parameters          = { 
-    "SQLServerURL" : "placeholder" 
-    "SQLserverDatabaseName" : "placeholder" 
+    "SQLServerURL" : "placeholder"  
+    "SQLserverDatabaseName" : "placeholder"  
    
   
   }
 }
 
-
+#create azure SQL Server linked service
 resource "azurerm_data_factory_linked_service_sql_server" "lssqls" {
   name                = "lssqlServer"
   resource_group_name = azurerm_resource_group.rg.name
   data_factory_name     = azurerm_data_factory.adf.name
-  connection_string = data.azurerm_key_vault_secret.sqlcsecret.value
+  connection_string = data.azurerm_key_vault_secret.sqlcsecret.value  #create SQl server & DB first, to get the connection string, or use placeholder
   parameters          = { 
-    "SQLServerName" : "placeholder" 
+    "SQLServerName" : "placeholder"  
     "SQLDatabaseName" : "placeholder" 
     "AzureKeyVaultURL" : "placeholder" 
     "SQLAuthUserName" : "placeholder" 
+    "AzureKeyVaultSecretName" : "placeholder"   
+  
+  }
+}
+
+#create azure MySQL Server linked service
+resource "azurerm_data_factory_linked_service_mysql" "lsMysql" {
+  name                = "MySqlservice"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name     = azurerm_data_factory.adf.name
+  connection_string   = data.azurerm_key_vault_secret.Psqlcsecret.value
+  parameters          = { 
+    "MSQLServerName" : "placeholder" 
+    "MSQLDatabaseName" : "placeholder" 
+    "AzureKeyVaultURL" : "placeholder" 
+    "MSQLAuthUserName" : "placeholder" 
+    "AzureKeyVaultSecretName" : "placeholder"  
+  
+  }
+}
+
+#create azure PostgreSQl Server linked service
+resource "azurerm_data_factory_linked_service_postgresql" "lsPsql" {
+  name                = "PostgresSql"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name     = azurerm_data_factory.adf.name
+  connection_string   = data.azurerm_key_vault_secret.Msqlcsecret.value
+  parameters          = { 
+    "PSQLServerName" : "placeholder" 
+    "PSQLDatabaseName" : "placeholder" 
+    "AzureKeyVaultURL" : "placeholder" 
+    "PSQLAuthUserName" : "placeholder" 
     "AzureKeyVaultSecretName" : "placeholder" 
   
   }
 }
 
+#create azure HTTP linked service
+resource "azurerm_data_factory_linked_service_web" "lsHttp" {
+  name                = "Httpservice"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name     = azurerm_data_factory.adf.name
+  authentication_type = "@{linkedService().HTTPAuthenticationType}" 
+  url                 = "http://www.bing.com"
+  parameters          = { 
+    "HTTPAuthenticationType" : "placeholder" 
+    "HttpURL" : "placeholder" 
+  }
+}
 
-#blob dataset
+#create SFTP linked service
+resource "azurerm_data_factory_linked_service_sftp" "lsSftp" {
+  name                = "SFTP"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name     = azurerm_data_factory.adf.name
+
+  authentication_type = "@{linkedService().AuthenticationType}"
+  host                = "http://www.bing.com"
+  port                = 22
+  username            = "@{linkedService().Username}" 
+  password            = "@{linkedService().AzureKeyVaultPassword}" 
+
+  parameters = {
+    "AuthenticationType"    = "placeholder" 
+    "Host"                  = "placeholder" 
+    "Port"                  = 22
+    "Username"              = "placeholder" 
+    "AzureKeyVaultPassword" = "placeholder" 
+  }
+}
+
+#---------------------------------------------------------------------------------------------
+#Create Datasets ###3
+#---------------------------------------------------------------------------------------------
+
+#Create azure storageg2 dataset
 resource "azurerm_data_factory_dataset_azure_blob" "dsbs" {
-  name                = "adlsstorageacc"
+  name                = "Source_Lake"
   resource_group_name = azurerm_resource_group.rg.name
   data_factory_name   = azurerm_data_factory.adf.name
   linked_service_name = azurerm_data_factory_linked_service_data_lake_storage_gen2.lsadls.name
@@ -264,4 +337,121 @@ resource "azurerm_data_factory_dataset_azure_blob" "dsbs" {
 
   path     = "@dataset().Filesystem"  #hardcode placeholder as they would appear in adf 
   filename = "@dataset().FileName"
+}
+
+#Create SQL Server table dataset
+resource "azurerm_data_factory_dataset_sql_server_table" "dsSQls" {
+  name                = "Source_SQLServer"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  linked_service_name = azurerm_data_factory_linked_service_sql_server.lssqls.name
+  parameters          = { 
+    "SQLServerName" : "GenericOnPremSqlServerName" 
+    "SQLDatabaseName" : "GenericDatabaseName" 
+    "AzureKeyVaultURL" : "KeyVaultURL" 
+    "SQLAuthUserName" : "SQLAuthUserName" 
+    "AzureKeyVaultURL" : "KeyvaultURL" 
+    "SQLAuthenticationPasswordAzureKeyVaultSecretName" : "SQL Password in KeyVault"
+    "SchemaName" : "TableMySchemaName"
+    "ObjectName" : "TableObjectName" 
+  
+  }
+}
+
+#Create PostgresSQL Server table dataset
+resource "azurerm_data_factory_dataset_postgresql" "dsPsql" {
+  name                = "Source_PostgreSQL"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  linked_service_name = azurerm_data_factory_linked_service_postgresql.lsPsql.name
+  parameters          = { 
+    "PSQLServerName" : "GenericOnPremSqlServerName" 
+    "PSQLDatabaseName" : "GenericDatabaseName" 
+    "AzureKeyVaultURL" : "KeyVaultURL" 
+    "PSQLAuthUserName" : "SQLAuthUserName" 
+    "AzureKeyVaultURL" : "KeyvaultURL" 
+    "PSQLAuthenticationPasswordAzureKeyVaultSecretName" : "SQL Password in KeyVault"
+    "SchemaName" : "TableMySchemaName"
+    "ObjectName" : "TableObjectName" 
+  
+  }
+}
+
+#Create MySql Server table dataset
+resource "azurerm_data_factory_dataset_mysql" "dsMsql" {
+  name                = "Source_MySQl"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  linked_service_name = azurerm_data_factory_linked_service_mysql.lsMysql.name
+  parameters          = { 
+    "MSQLServerName" : "GenericOnPremSqlServerName" 
+    "MSQLDatabaseName" : "GenericDatabaseName" 
+    "AzureKeyVaultURL" : "KeyVaultURL" 
+    "MSQLAuthUserName" : "SQLAuthUserName" 
+    "AzureKeyVaultURL" : "KeyvaultURL" 
+    "MSQLAuthenticationPasswordAzureKeyVaultSecretName" : "SQL Password in KeyVault"
+    "SchemaName" : "TableMySchemaName"
+    "ObjectName" : "TableObjectName" 
+  
+  }
+}
+
+#Create HTTP dataset
+resource "azurerm_data_factory_dataset_http" "dsHTTP" {
+  name                = "Source_HTTP"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  linked_service_name = azurerm_data_factory_linked_service_web.lsHttp.name
+
+  relative_url   = "http://www.bing.com"
+  request_body   = "@dataset().RequestBody" 
+  request_method = "@dataset().RequestMethod" 
+
+  parameters = {
+    "RelativeURL" : "placeholder"
+    "RequestBody" : "placeholder"
+    "RequestMethod" : "placeholder"
+
+  }
+}
+
+/* Invalid Resource type -Yet its in the documentations
+#Create SFTP dataset
+  resource "azurerm_data_factory_dataset_binary" "dsSftp" {
+  name                = "Source_SFTP"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  linked_service_name = azurerm_data_factory_linked_service_sftp.lsSftp.name
+  sftp_server_location {
+    path     = "@dataset().Path" 
+    filename = "@dataset().FileName" 
+  }
+  parameters = {
+    "Path"      = "Basic"
+    "FileName"  = "http://www.bing.com"
+    
+  }
+  }
+  */
+
+
+#---------------------------------------------------------------------------------------------
+#Integration Runtime ###4
+#---------------------------------------------------------------------------------------------
+
+/* Invalid Resource type -Yet its in the documentations
+#Create Azure Integration Runtime
+resource "azurerm_data_factory_integration_runtime_azure" "Iraz" {
+  name                = "AzureIntegrationr"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
+  location            = azurerm_resource_group.rg.location
+}
+*/
+
+#Create Self Hosted Integration Runtime
+resource "azurerm_data_factory_integration_runtime_self_hosted" "Irsh" {
+  name                = "SelfHostedIR"
+  resource_group_name = azurerm_resource_group.rg.name
+  data_factory_name   = azurerm_data_factory.adf.name
 }
